@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>React Tutorial</title>
+    <!-- Not present in the tutorial. Just for basic styling. -->
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.14.0/react.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.14.0/react-dom.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.6.15/browser.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+  </head>
+  <body>
+    <div id="content"></div>
+    <script type="text/babel">
+
+// Table - (this contains all table spaces)
+var Table = React.createClass({
+  getInitialState: function(){
+    return {
+      // dimensions (TODO get from window)
+      height: 600,
+      width: 600
+    };
+  },
+  dimensionsStyle: function(){
+    return { width: this.state.width + 'px', height: this.state.height + 'px' };
+  },
+  render: function(){
+
+    // define dimensions
+    var tablespaceDimensions = {width: 50, height: 70};
+
+    // create a number of tablespaces based on dimensions of table
+    // TODO account for border other than just +2
+    var numTablespaces =
+      Math.floor(this.state.width / (tablespaceDimensions.width+2)) * Math.floor(this.state.height / (tablespaceDimensions.height+2));
+    var tablespaces = [];
+    var i;
+    for(i = 1;i <= numTablespaces;i++){
+      tablespaces.push(<Tablespace key={i} width={tablespaceDimensions.width} height={tablespaceDimensions.height} />);
+    }
+
+    return (
+      <div className="table" style={this.dimensionsStyle()} >
+        {tablespaces}
+      </div>
+    );
+  }
+});
+
+// TableSpace -  this is a space on a table where cards can be placed
+var Tablespace = React.createClass({
+  getInitialState: function(){
+    return {
+      height: this.props.height,
+      width: this.props.width
+    };
+  },
+  dimensionsStyle: function(){
+    return { height: this.state.height + 'px', width: this.state.width + 'px'}
+  },
+  render: function(){
+    return (
+      <div className="tablespace" style={this.dimensionsStyle()}>
+      </div>
+    )
+  }
+});
+
+
+
+ReactDOM.render(
+ <Table />,
+ document.getElementById('content')
+);
+
+    </script>
+  </body>
+</html>
