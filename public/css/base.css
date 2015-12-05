@@ -16,3 +16,8 @@ body {
   float: left;
   border: 1px dashed;
 }
+
+.card {
+  width: 15px;
+  height: 15px;
+}

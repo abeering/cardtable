@@ -2,8 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>React Tutorial</title>
-    <!-- Not present in the tutorial. Just for basic styling. -->
+    <title>Cardtable</title>
     <link rel="stylesheet" href="css/base.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.14.0/react.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.14.0/react-dom.js"></script>
@@ -18,32 +17,61 @@
 var Table = React.createClass({
   getInitialState: function(){
     return {
+      id: this.props.id,
       // dimensions (TODO get from window)
       height: 600,
-      width: 600
+      width: 600,
+      // will be filled in after render
+      tablespaces: []
     };
+  },
+  componentDidMount: function(){
+    // get data from server for this table
+    $.ajax({
+      url: "api/table/" + this.state.id,
+      dataType: 'json',
+      cache: false,
+      success: function(data) {
+        var tablespacesWithData = {};
+        if(data["tablespaces"]){
+          tablespacesWithData = data["tablespaces"];
+        }
+
+        // define dimensions
+        // TODO noooott ssuuurrreee.......
+        // this will eventually scale but we'll figure it out then, for now just defined statically here
+        // size = element size + border
+        var tablespaceDimensions = {x: 50, xBorder: 2, y: 70, yBorder: 2};
+
+        // create a number of tablespaces based on dimensions of table
+        // TODO account for border other than just +2
+        var tablespacesX = Math.floor(this.state.width / (tablespaceDimensions.x + tablespaceDimensions.xBorder));
+        var tablespacesY = Math.floor(this.state.height / (tablespaceDimensions.y + tablespaceDimensions.yBorder));
+        var tablespaces = [];
+        var x, y;
+        for(y = 1; y <= tablespacesY; y++){
+          for(x = 1; x <= tablespacesX; x++){
+            var tablespaceId = x + ":" + y;
+            var cards = (tablespacesWithData[tablespaceId])
+              ? tablespacesWithData[tablespaceId]['cards'].map(function(card){ return ( <Card id={card.id} key={card.id} color={card.color} /> )})
+              : [];
+            tablespaces.push(<Tablespace id={tablespaceId} key={tablespaceId} cards={cards} width={tablespaceDimensions.x} height={tablespaceDimensions.y} />);
+          }
+        }
+        this.setState({tablespaces: tablespaces});
+      }.bind(this),
+      error: function(xhr, status, err) {
+        console.error("ajax error", status, err.toString());
+      }.bind(this)
+    });
   },
   dimensionsStyle: function(){
     return { width: this.state.width + 'px', height: this.state.height + 'px' };
   },
   render: function(){
-
-    // define dimensions
-    var tablespaceDimensions = {width: 50, height: 70};
-
-    // create a number of tablespaces based on dimensions of table
-    // TODO account for border other than just +2
-    var numTablespaces =
-      Math.floor(this.state.width / (tablespaceDimensions.width+2)) * Math.floor(this.state.height / (tablespaceDimensions.height+2));
-    var tablespaces = [];
-    var i;
-    for(i = 1;i <= numTablespaces;i++){
-      tablespaces.push(<Tablespace key={i} width={tablespaceDimensions.width} height={tablespaceDimensions.height} />);
-    }
-
     return (
       <div className="table" style={this.dimensionsStyle()} >
-        {tablespaces}
+        {this.state.tablespaces}
       </div>
     );
   }
@@ -53,25 +81,56 @@ var Table = React.createClass({
 var Tablespace = React.createClass({
   getInitialState: function(){
     return {
+      id: this.props.id,
       height: this.props.height,
-      width: this.props.width
+      width: this.props.width,
+      cards: this.props.cards
     };
   },
   dimensionsStyle: function(){
-    return { height: this.state.height + 'px', width: this.state.width + 'px'}
+    return { height: this.state.height + 'px', width: this.state.width + 'px'};
+  },
+  dragOver: function(event){
+    event.preventDefault();
+  },
+  drop: function(event){
+    event.preventDefault();
+    var cardId = event.dataTransfer.getData("card");
+    console.log("moving " + cardId + " to tablespace " + this.state.id);
   },
   render: function(){
     return (
-      <div className="tablespace" style={this.dimensionsStyle()}>
+      <div className="tablespace" style={this.dimensionsStyle()} onDragOver={this.dragOver} onDrop={this.drop}>
+        {this.state.cards}
       </div>
     )
   }
 });
 
+// Card - this is a card
+var Card = React.createClass({
+  getInitialState: function(){
+    return {
+      id: this.props.id,
+      color: this.props.color
+    };
+  },
+  dragStart: function(event){
+    event.dataTransfer.setData('card', this.state.id)
+  },
+  cardStyle: function(){
+    return { backgroundColor: this.state.color }
+  },
+  render: function(){
+    return (
+      <div key={this.state.id} draggable="true" className="card" style={this.cardStyle()} onDragStart={this.dragStart} />
+    )
+  }
+});
 
 
 ReactDOM.render(
- <Table />,
+ <Table id="1" />,
  document.getElementById('content')
 );
 
