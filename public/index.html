@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.14.0/react-dom.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.6.15/browser.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+    <script src="bower_components/classnames/index.js"></script>
     <script src="https://cdn.socket.io/socket.io-1.3.7.js"></script>
   </head>
   <body>
@@ -30,8 +31,6 @@ var Table = React.createClass({
     };
   },
   updateTableState: function(data){
-    console.log('update table state');
-    console.log(data);
     var tablespacesWithData = data;
     // define dimensions
     // TODO noooott ssuuurrreee.......
@@ -49,7 +48,11 @@ var Table = React.createClass({
       for(x = 1; x <= tablespacesX; x++){
         var tablespaceId = y + ":" + x;
         var cards = (tablespacesWithData[tablespaceId])
-          ? tablespacesWithData[tablespaceId]['cards'].map(function(card){ return ( <Card id={card.id} key={card.id} socket={this.state.socket} color={card.color} /> )}.bind(this))
+          ? tablespacesWithData[tablespaceId]['cards'].map(function(card){
+            return (
+              <Card id={card.id} key={card.id} ordinal={card.ordinal} socket={this.state.socket} color={card.color} />
+            )
+          }.bind(this))
           : [];
         tablespaces.push(<Tablespace id={tablespaceId} key={tablespaceId} socket={this.state.socket} cards={cards} width={tablespaceDimensions.x} height={tablespaceDimensions.y} />);
       }
@@ -85,20 +88,31 @@ var Tablespace = React.createClass({
     };
   },
   dimensionsStyle: function(){
-    return { height: this.state.height + 'px', width: this.state.width + 'px'};
+    return { minHeight: (this.state.height+(this.state.cards.length*10)) + 'px', minWidth: this.state.width + 'px'};
+  },
+  sortedCards: function(){
+    return this.state.cards.sort(function(a,b){
+      if(a.props.ordinal > b.props.ordinal){
+        return 1;
+      }
+      if(a.props.ordinal < b.props.ordinal){
+        return -1;
+      }
+      return 0;
+    });
   },
   dragOver: function(event){
     event.preventDefault();
   },
   drop: function(event){
     event.preventDefault();
-    var cardId = event.dataTransfer.getData("card");
-    this.state.tableSocket.emit('moveCardPosition', {cardId: cardId, newTablespaceId: this.state.id});
+    var cardId = event.dataTransfer.getData("cardId");
+    this.state.tableSocket.emit('moveCardPosition', {cardId: cardId, newTablespaceId: this.state.id, position: "top"});
   },
   render: function(){
     return (
       <div className="tablespace" style={this.dimensionsStyle()} onDragOver={this.dragOver} onDrop={this.drop}>
-        {this.state.cards}
+        {this.sortedCards()}
       </div>
     )
   }
@@ -110,21 +124,57 @@ var Card = React.createClass({
     return {
       id: this.props.id,
       color: this.props.color,
-      tableSocket: this.props.socket
+      tableSocket: this.props.socket,
+      ordinal: this.props.ordinal,
+      isDragHovered: false
     };
   },
   dragStart: function(event){
-    event.dataTransfer.setData('card', this.state.id)
+    event.dataTransfer.setData("cardId", this.state.id)
+  },
+  dragOver: function(event){
+    var viewportOffset = event.currentTarget.getBoundingClientRect();
+    if(event.clientY < (event.currentTarget.offsetHeight + viewportOffset.top) - (event.currentTarget.offsetHeight * .5)){
+      this.setState({isDragHoveredAbove: true, isDragHovered: true});
+    } else {
+      this.setState({isDragHoveredAbove: false, isDragHovered: true});
+    }
+  },
+  dragLeave: function(event){
+    this.setState({isDragHovered: false, isDragHoveredAbove: false});
+  },
+  mouseEnter: function(event){
+    this.setState({isHovered: true})
+  },
+  mouseLeave: function(event){
+    this.setState({isHovered: false})
+  },
+  drop: function(event){
+    event.preventDefault();
+    var cardId = event.dataTransfer.getData("card");
+    console.log("mvoing " + cardId + " above " + this.state.id + " having ordinal " + this.state.ordinal);
+    //this.state.tableSocket.emit('moveCardPosition', {cardId: cardId, newTablespaceId: this.state.id, position: "top"});
+  },
+  distanceFromTop: function(){
+    return (this.state.ordinal * 10) + 'px';
   },
   cardStyle: function(){
-    return { backgroundColor: this.state.color }
+    return { backgroundColor: this.state.color, top: this.distanceFromTop() }
   },
   render: function(){
+    var classes = classNames({
+      'card': true,
+      'card-hovered': this.state.isHovered && !this.state.isDragHovered,
+      'card-drag-hovered-above': this.state.isDragHovered && this.state.isDragHoveredAbove,
+      'card-drag-hovered-below': this.state.isDragHovered && !this.state.isDragHoveredAbove
+    });
     return (
-      <div key={this.state.id} draggable="true" className="card" style={this.cardStyle()} onDragStart={this.dragStart} />
+      <div key={this.state.id} draggable="true" className={classes} style={this.cardStyle()} onDragOver={this.dragOver} onDragLeave={this.dragLeave} onDragStart={this.dragStart} onDrop={this.drop} onMouseEnter={this.mouseEnter} onMouseLeave={this.mouseLeave} />
     )
   }
 });
+
+
 
 
 ReactDOM.render(

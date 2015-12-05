@@ -9,6 +9,7 @@ var pg_server = process.env.DATABASE_URL || 'localhost';
 var pg_con_string = "postgres://" + pg_server + "/cardtable";
 
 app.use('/', express.static(path.join(__dirname, 'public')));
+app.use('/bower_components',  express.static(__dirname + '/bower_components'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
 
@@ -35,7 +36,6 @@ io.sockets.on('connection', function (socket) {
 });
 
 function emitTableState(table_id, io){
-  console.log('emit table state');
   pg.connect(pg_con_string, function(err, client, done) {
     if (err) {
       return console.error('error fetching client from pool', err);
@@ -52,10 +52,10 @@ function emitTableState(table_id, io){
       table_data = {};
       result.rows.map(function(card){
         if(table_data[card.tablespace_coord]){
-          table_data[card.tablespace_coord]['cards'].push({ id: card.id, color: card.color });
+          table_data[card.tablespace_coord]['cards'].push({ id: card.id, color: card.color, ordinal: card.ordinal });
         } else {
           table_data[card.tablespace_coord] = {};
-          table_data[card.tablespace_coord]['cards'] = [ { id: card.id, color: card.color } ];
+          table_data[card.tablespace_coord]['cards'] = [ { id: card.id, color: card.color, ordinal: card.ordinal } ];
         }
       });
 
@@ -65,7 +65,6 @@ function emitTableState(table_id, io){
 }
 
 function moveCardPosition(table_id, io, data){
-  console.log('move card position');
   pg.connect(pg_con_string, function(err, client, done) {
     if (err) {
       return console.error('error fetching client from pool', err);
