@@ -23,18 +23,17 @@ io.sockets.on('connection', function (socket) {
   // init table connection
   socket.on('initTable', function(table_id_param){
     table_id = table_id_param;
-    socket.join(table_id);
-    emitTableState(table_id, socket);
+    emitTableState(table_id, io);
   });
 
   // update table data
   socket.on('moveCardPosition', function(data){
-    moveCardPosition(table_id, socket, data);
+    moveCardPosition(table_id, io, data);
   });
 
 });
 
-function emitTableState(table_id, socket){
+function emitTableState(table_id, io){
   console.log('emit table state');
   pg.connect(pg_con_string, function(err, client, done) {
     if (err) {
@@ -59,12 +58,12 @@ function emitTableState(table_id, socket){
         }
       });
 
-      socket.emit('updateTable', table_data);
+      io.emit('updateTable', table_data);
     });
   });
 }
 
-function moveCardPosition(table_id, socket, data){
+function moveCardPosition(table_id, io, data){
   console.log('move card position');
   pg.connect(pg_con_string, function(err, client, done) {
     if (err) {
@@ -79,7 +78,7 @@ function moveCardPosition(table_id, socket, data){
         return console.error('error running query', err);
       }
 
-      emitTableState(table_id, socket);
+      emitTableState(table_id, io);
 
     });
   });

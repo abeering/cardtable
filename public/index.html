@@ -54,6 +54,7 @@ var Table = React.createClass({
         tablespaces.push(<Tablespace id={tablespaceId} key={tablespaceId} socket={this.state.socket} cards={cards} width={tablespaceDimensions.x} height={tablespaceDimensions.y} />);
       }
     }
+    this.setState({tablespaces: []});
     this.setState({tablespaces: tablespaces});
   },
   componentDidMount: function(){
