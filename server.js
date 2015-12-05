@@ -5,7 +5,8 @@ var express = require('express');
 var app = express();
 var bodyParser = require('body-parser');
 
-var pg_con_string = "postgres://localhost/cardtable";
+var pg_server = process.env.DATABASE_URL || 'localhost';
+var pg_con_string = "postgres://" + pg_server + "/cardtable";
 
 app.use('/', express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
