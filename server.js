@@ -1,36 +1,52 @@
+var pg = require('pg');
 var fs = require('fs');
 var path = require('path');
 var express = require('express');
-var bodyParser = require('body-parser');
-var pg = require('pg');
 var app = express();
+var bodyParser = require('body-parser');
 
 var pg_con_string = "postgres://localhost/cardtable";
-
-app.set('port', (process.env.PORT || 3000));
 
 app.use('/', express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
 
-// get table information to render entire table
-app.get('/api/table/:table_id', function(req, res) {
+// socket.io
+var server = require('http').Server(app);
+var io = require('socket.io').listen(server);
+server.listen(3000);
 
+io.sockets.on('connection', function (socket) {
+
+  var table_id;
+
+  // init table connection
+  socket.on('initTable', function(table_id_param){
+    table_id = table_id_param;
+    socket.join(table_id);
+    emitTableState(table_id, socket);
+  });
+
+  // update table data
+  socket.on('moveCardPosition', function(data){
+    moveCardPosition(table_id, socket, data);
+  });
+
+});
+
+function emitTableState(table_id, socket){
+  console.log('emit table state');
   pg.connect(pg_con_string, function(err, client, done) {
     if (err) {
       return console.error('error fetching client from pool', err);
     }
     client.query(
       'SELECT cards.* FROM cards WHERE cards.table_id = $1::INT',
-      [req.params.table_id],
-      function(err, result){
+      [table_id],
+    function(err, result){
       done();
       if (err) {
         return console.error('error running query', err);
-      }
-
-      if(!result){
-        res.status(404).end();
       }
 
       table_data = {};
@@ -41,44 +57,33 @@ app.get('/api/table/:table_id', function(req, res) {
           table_data[card.tablespace_coord] = {};
           table_data[card.tablespace_coord]['cards'] = [ { id: card.id, color: card.color } ];
         }
-
       });
 
-      res.setHeader('Cache-Control', 'no-cache');
-      res.json({ tablespaces: table_data });
+      socket.emit('updateTable', table_data);
     });
-
   });
-});
+}
 
-// move a card to another position
-app.get('/api/table/:table_id/move/:card_id/to/:tablespace_coord', function(req,res) {
-
+function moveCardPosition(table_id, socket, data){
+  console.log('move card position');
   pg.connect(pg_con_string, function(err, client, done) {
     if (err) {
       return console.error('error fetching client from pool', err);
     }
     client.query(
       'UPDATE cards SET tablespace_coord = $1::VARCHAR WHERE table_id = $2::INT AND id = $3::INT',
-      [req.params.tablespace_coord, req.params.table_id, req.params.card_id],
-      function(err, result){
+      [data['newTablespaceId'], table_id, data['cardId']],
+    function(err, result){
       done();
       if (err) {
         return console.error('error running query', err);
       }
-      console.log(result);
 
-      if(!result){
-        res.status(404).end();
-      }
+      emitTableState(table_id, socket);
 
-      res.setHeader('Cache-Control', 'no-cache');
-      res.json({ status: 'ok' });
     });
-
   });
-
-});
+}
 
 app.listen(app.get('port'), function() {
   console.log('Server started: http://localhost:' + app.get('port') + '/');

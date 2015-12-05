@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.14.0/react-dom.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.6.15/browser.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+    <script src="https://cdn.socket.io/socket.io-1.3.7.js"></script>
   </head>
   <body>
     <div id="content"></div>
@@ -16,8 +17,11 @@
 // Table - (this contains all table spaces)
 var Table = React.createClass({
   getInitialState: function(){
+    var socket = io.connect();
+    socket.emit('initTable', this.props.id);
     return {
       id: this.props.id,
+      socket: socket,
       // dimensions (TODO get from window)
       height: 600,
       width: 600,
@@ -25,45 +29,36 @@ var Table = React.createClass({
       tablespaces: []
     };
   },
+  updateTableState: function(data){
+    console.log('update table state');
+    console.log(data);
+    var tablespacesWithData = data;
+    // define dimensions
+    // TODO noooott ssuuurrreee.......
+    // this will eventually scale but we'll figure it out then, for now just defined statically here
+    // size = element size + border
+    var tablespaceDimensions = {x: 50, xBorder: 2, y: 70, yBorder: 2};
+
+    // create a number of tablespaces based on dimensions of table
+    // TODO account for border other than just +2
+    var tablespacesX = Math.floor(this.state.width / (tablespaceDimensions.x + tablespaceDimensions.xBorder));
+    var tablespacesY = Math.floor(this.state.height / (tablespaceDimensions.y + tablespaceDimensions.yBorder));
+    var tablespaces = [];
+    var x, y;
+    for(y = 1; y <= tablespacesY; y++){
+      for(x = 1; x <= tablespacesX; x++){
+        var tablespaceId = y + ":" + x;
+        var cards = (tablespacesWithData[tablespaceId])
+          ? tablespacesWithData[tablespaceId]['cards'].map(function(card){ return ( <Card id={card.id} key={card.id} socket={this.state.socket} color={card.color} /> )}.bind(this))
+          : [];
+        tablespaces.push(<Tablespace id={tablespaceId} key={tablespaceId} socket={this.state.socket} cards={cards} width={tablespaceDimensions.x} height={tablespaceDimensions.y} />);
+      }
+    }
+    this.setState({tablespaces: tablespaces});
+  },
   componentDidMount: function(){
-    // get data from server for this table
-    $.ajax({
-      url: "api/table/" + this.state.id,
-      dataType: 'json',
-      cache: false,
-      success: function(data) {
-        var tablespacesWithData = {};
-        if(data["tablespaces"]){
-          tablespacesWithData = data["tablespaces"];
-        }
-
-        // define dimensions
-        // TODO noooott ssuuurrreee.......
-        // this will eventually scale but we'll figure it out then, for now just defined statically here
-        // size = element size + border
-        var tablespaceDimensions = {x: 50, xBorder: 2, y: 70, yBorder: 2};
-
-        // create a number of tablespaces based on dimensions of table
-        // TODO account for border other than just +2
-        var tablespacesX = Math.floor(this.state.width / (tablespaceDimensions.x + tablespaceDimensions.xBorder));
-        var tablespacesY = Math.floor(this.state.height / (tablespaceDimensions.y + tablespaceDimensions.yBorder));
-        var tablespaces = [];
-        var x, y;
-        for(y = 1; y <= tablespacesY; y++){
-          for(x = 1; x <= tablespacesX; x++){
-            var tablespaceId = x + ":" + y;
-            var cards = (tablespacesWithData[tablespaceId])
-              ? tablespacesWithData[tablespaceId]['cards'].map(function(card){ return ( <Card id={card.id} key={card.id} color={card.color} /> )})
-              : [];
-            tablespaces.push(<Tablespace id={tablespaceId} key={tablespaceId} cards={cards} width={tablespaceDimensions.x} height={tablespaceDimensions.y} />);
-          }
-        }
-        this.setState({tablespaces: tablespaces});
-      }.bind(this),
-      error: function(xhr, status, err) {
-        console.error("ajax error", status, err.toString());
-      }.bind(this)
-    });
+    // setup websocket listener for updates
+    this.state.socket.on('updateTable', this.updateTableState);
   },
   dimensionsStyle: function(){
     return { width: this.state.width + 'px', height: this.state.height + 'px' };
@@ -84,7 +79,8 @@ var Tablespace = React.createClass({
       id: this.props.id,
       height: this.props.height,
       width: this.props.width,
-      cards: this.props.cards
+      cards: this.props.cards,
+      tableSocket: this.props.socket
     };
   },
   dimensionsStyle: function(){
@@ -96,7 +92,7 @@ var Tablespace = React.createClass({
   drop: function(event){
     event.preventDefault();
     var cardId = event.dataTransfer.getData("card");
-    console.log("moving " + cardId + " to tablespace " + this.state.id);
+    this.state.tableSocket.emit('moveCardPosition', {cardId: cardId, newTablespaceId: this.state.id});
   },
   render: function(){
     return (
@@ -112,7 +108,8 @@ var Card = React.createClass({
   getInitialState: function(){
     return {
       id: this.props.id,
-      color: this.props.color
+      color: this.props.color,
+      tableSocket: this.props.socket
     };
   },
   dragStart: function(event){
