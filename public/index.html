@@ -24,8 +24,8 @@ var Table = React.createClass({
       id: this.props.id,
       socket: socket,
       // dimensions (TODO get from window)
-      height: 600,
-      width: 600,
+      height: 1000,
+      width: 1000,
       // will be filled in after render
       tablespaces: []
     };
@@ -50,7 +50,7 @@ var Table = React.createClass({
         var cards = (tablespacesWithData[tablespaceId])
           ? tablespacesWithData[tablespaceId]['cards'].map(function(card){
             return (
-              <Card id={card.id} key={card.id} ordinal={card.ordinal} socket={this.state.socket} color={card.color} />
+              <Card id={card.id} key={card.id} tablespaceId={tablespaceId} ordinal={card.ordinal} socket={this.state.socket} color={card.color} />
             )
           }.bind(this))
           : [];
@@ -88,7 +88,7 @@ var Tablespace = React.createClass({
     };
   },
   dimensionsStyle: function(){
-    return { minHeight: (this.state.height+(this.state.cards.length*10)) + 'px', minWidth: this.state.width + 'px'};
+    return { minHeight: (this.state.height) + 'px', minWidth: this.state.width + 'px'};
   },
   sortedCards: function(){
     return this.state.cards.sort(function(a,b){
@@ -107,7 +107,14 @@ var Tablespace = React.createClass({
   drop: function(event){
     event.preventDefault();
     var cardId = event.dataTransfer.getData("cardId");
-    this.state.tableSocket.emit('moveCardPosition', {cardId: cardId, newTablespaceId: this.state.id, position: "top"});
+    var oldTablespaceId = event.dataTransfer.getData("oldTablespaceId");
+    var oldOrdinal = parseInt(event.dataTransfer.getData("oldOrdinal"));
+    // should only fire if this is an empty tablespace
+    if(this.state.cards.length == 0){
+      this.state.tableSocket.emit(
+        'moveCardPosition',
+        {cardId: cardId, oldTablespaceId: oldTablespaceId, newTablespaceId: this.state.id, oldOrdinal: oldOrdinal, newOrdinal: 0});
+    }
   },
   render: function(){
     return (
@@ -123,6 +130,7 @@ var Card = React.createClass({
   getInitialState: function(){
     return {
       id: this.props.id,
+      tablespaceId: this.props.tablespaceId,
       color: this.props.color,
       tableSocket: this.props.socket,
       ordinal: this.props.ordinal,
@@ -130,14 +138,22 @@ var Card = React.createClass({
     };
   },
   dragStart: function(event){
-    event.dataTransfer.setData("cardId", this.state.id)
+    this.setState({isDragging: true});
+    event.dataTransfer.setData("cardId", this.state.id);
+    event.dataTransfer.setData("oldTablespaceId", this.state.tablespaceId);
+    event.dataTransfer.setData("oldOrdinal", this.state.ordinal);
+  },
+  dragEnd: function(event){
+    this.setState({isDragging: false});
   },
   dragOver: function(event){
-    var viewportOffset = event.currentTarget.getBoundingClientRect();
-    if(event.clientY < (event.currentTarget.offsetHeight + viewportOffset.top) - (event.currentTarget.offsetHeight * .5)){
-      this.setState({isDragHoveredAbove: true, isDragHovered: true});
-    } else {
-      this.setState({isDragHoveredAbove: false, isDragHovered: true});
+    if(!this.state.isDragging){
+      var viewportOffset = event.currentTarget.getBoundingClientRect();
+      if(event.clientY < (event.currentTarget.offsetHeight + viewportOffset.top) - (event.currentTarget.offsetHeight * .5)){
+        this.setState({isDragHoveredAbove: true, isDragHovered: true});
+      } else {
+        this.setState({isDragHoveredAbove: false, isDragHovered: true});
+      }
     }
   },
   dragLeave: function(event){
@@ -151,9 +167,21 @@ var Card = React.createClass({
   },
   drop: function(event){
     event.preventDefault();
-    var cardId = event.dataTransfer.getData("card");
-    console.log("mvoing " + cardId + " above " + this.state.id + " having ordinal " + this.state.ordinal);
-    //this.state.tableSocket.emit('moveCardPosition', {cardId: cardId, newTablespaceId: this.state.id, position: "top"});
+    var cardId = event.dataTransfer.getData("cardId");
+    var oldTablespaceId = event.dataTransfer.getData("oldTablespaceId");
+    var oldOrdinal = parseInt(event.dataTransfer.getData("oldOrdinal"));
+    var newOrdinal;
+    if(this.state.isDragHovered){
+      if(oldTablespaceId == this.state.tablespaceId){
+        newOrdinal = (this.state.isDragHoveredAbove) ? ((this.state.ordinal-1 > 0) ? (this.state.ordinal-1) : 0) : (this.state.ordinal);
+      } else {
+        newOrdinal = (this.state.isDragHoveredAbove) ? this.state.ordinal : (this.state.ordinal+1);
+      }
+      this.state.tableSocket.emit(
+        'moveCardPosition',
+        {cardId: cardId, oldTablespaceId: oldTablespaceId, newTablespaceId: this.state.tablespaceId, oldOrdinal: oldOrdinal, newOrdinal: newOrdinal}
+      );
+    }
   },
   distanceFromTop: function(){
     return (this.state.ordinal * 10) + 'px';
@@ -173,8 +201,6 @@ var Card = React.createClass({
     )
   }
 });
-
-
 
 
 ReactDOM.render(
