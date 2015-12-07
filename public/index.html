@@ -12,7 +12,8 @@
     <script src="https://cdn.socket.io/socket.io-1.3.7.js"></script>
   </head>
   <body>
-    <div id="content"></div>
+    <div id="decks"></div>
+    <div id="table"></div>
     <script type="text/babel">
 
 // Table - (this contains all table spaces)
@@ -36,12 +37,13 @@ var Table = React.createClass({
     // TODO noooott ssuuurrreee.......
     // this will eventually scale but we'll figure it out then, for now just defined statically here
     // size = element size + border
-    var tablespaceDimensions = {x: 50, xBorder: 2, y: 70, yBorder: 2};
+    // xIncrease = css border+margin+padding (2+10+0)
+    var tablespaceDimensions = {x: 70, xIncrease: 12, y: 90, yIncrease: 6};
 
     // create a number of tablespaces based on dimensions of table
     // TODO account for border other than just +2
-    var tablespacesX = Math.floor(this.state.width / (tablespaceDimensions.x + tablespaceDimensions.xBorder));
-    var tablespacesY = Math.floor(this.state.height / (tablespaceDimensions.y + tablespaceDimensions.yBorder));
+    var tablespacesX = Math.floor(this.state.width / (tablespaceDimensions.x + tablespaceDimensions.xIncrease));
+    var tablespacesY = Math.floor(this.state.height / (tablespaceDimensions.y + tablespaceDimensions.yIncrease));
     var tablespaces = [];
     var x, y;
     for(y = 1; y <= tablespacesY; y++){
@@ -49,8 +51,19 @@ var Table = React.createClass({
         var tablespaceId = y + ":" + x;
         var cards = (tablespacesWithData[tablespaceId])
           ? tablespacesWithData[tablespaceId]['cards'].map(function(card){
+            var markupComponent = <CardMarkup markup={card.markup} />;
             return (
-              <Card id={card.id} key={card.id} tablespaceId={tablespaceId} ordinal={card.ordinal} socket={this.state.socket} color={card.color} />
+              <Card
+                id={card.id}
+                key={card.id}
+                tablespaceId={tablespaceId}
+                ordinal={card.ordinal}
+                socket={this.state.socket}
+                markupComponent={markupComponent}
+                color={card.color}
+                pile = {card.pile}
+                cardsInPile = {card.cards_in_pile}
+              />
             )
           }.bind(this))
           : [];
@@ -88,7 +101,7 @@ var Tablespace = React.createClass({
     };
   },
   dimensionsStyle: function(){
-    return { minHeight: (this.state.height) + 'px', minWidth: this.state.width + 'px'};
+    return { minHeight: (this.state.height) + 'px', minWidth: this.state.width + 'px' };
   },
   sortedCards: function(){
     return this.state.cards.sort(function(a,b){
@@ -107,13 +120,31 @@ var Tablespace = React.createClass({
   drop: function(event){
     event.preventDefault();
     var cardId = event.dataTransfer.getData("cardId");
-    var oldTablespaceId = event.dataTransfer.getData("oldTablespaceId");
-    var oldOrdinal = parseInt(event.dataTransfer.getData("oldOrdinal"));
-    // should only fire if this is an empty tablespace
-    if(this.state.cards.length == 0){
-      this.state.tableSocket.emit(
-        'moveCardPosition',
-        {cardId: cardId, oldTablespaceId: oldTablespaceId, newTablespaceId: this.state.id, oldOrdinal: oldOrdinal, newOrdinal: 0});
+    var deckName = event.dataTransfer.getData("deckName");
+
+    // dragging a card onto this tablespace
+    if(cardId){
+      var cardPile = event.dataTransfer.getData("cardPile");
+      var oldTablespaceId = event.dataTransfer.getData("oldTablespaceId");
+      var oldOrdinal = parseInt(event.dataTransfer.getData("oldOrdinal"));
+      // should only fire if this is an empty tablespace
+      if(this.state.cards.length == 0){
+        this.state.tableSocket.emit(
+          'moveCardPosition',
+          {
+            cardId: cardId,
+            oldTablespaceId: oldTablespaceId,
+            newTablespaceId: this.state.id,
+            oldOrdinal: oldOrdinal,
+            newOrdinal: 0
+          }
+        );
+      }
+    }
+
+    // dragging a deck onto this tablespace
+    if(deckName){
+      this.state.tableSocket.emit('loadDeck', {deckName: deckName, tablespaceId: this.state.id});
     }
   },
   render: function(){
@@ -131,10 +162,19 @@ var Card = React.createClass({
     return {
       id: this.props.id,
       tablespaceId: this.props.tablespaceId,
+      markupComponent: this.props.markupComponent,
       color: this.props.color,
-      tableSocket: this.props.socket,
       ordinal: this.props.ordinal,
-      isDragHovered: false
+      isPile: (this.props.pile) ? true : false,
+      pile: this.props.pile,
+      cardsInPile: this.props.cardsInPile,
+
+      // events
+      tableSocket: this.props.socket,
+
+      // UI
+      isDragHovered: false,
+      contextMenu: false
     };
   },
   dragStart: function(event){
@@ -142,6 +182,7 @@ var Card = React.createClass({
     event.dataTransfer.setData("cardId", this.state.id);
     event.dataTransfer.setData("oldTablespaceId", this.state.tablespaceId);
     event.dataTransfer.setData("oldOrdinal", this.state.ordinal);
+    event.dataTransfer.setData("cardPile", this.state.pile);
   },
   dragEnd: function(event){
     this.setState({isDragging: false});
@@ -160,34 +201,57 @@ var Card = React.createClass({
     this.setState({isDragHovered: false, isDragHoveredAbove: false});
   },
   mouseEnter: function(event){
-    this.setState({isHovered: true})
+    this.setState({isHovered: true});
   },
   mouseLeave: function(event){
-    this.setState({isHovered: false})
+    this.setState({isHovered: false, contextMenu: false});
+  },
+  contextMenu: function(event){
+    event.preventDefault();
+    this.setState({contextMenu: true});
   },
   drop: function(event){
     event.preventDefault();
     var cardId = event.dataTransfer.getData("cardId");
-    var oldTablespaceId = event.dataTransfer.getData("oldTablespaceId");
-    var oldOrdinal = parseInt(event.dataTransfer.getData("oldOrdinal"));
-    var newOrdinal;
-    if(this.state.isDragHovered){
-      if(oldTablespaceId == this.state.tablespaceId){
-        newOrdinal = (this.state.isDragHoveredAbove) ? ((this.state.ordinal-1 > 0) ? (this.state.ordinal-1) : 0) : (this.state.ordinal);
-      } else {
-        newOrdinal = (this.state.isDragHoveredAbove) ? this.state.ordinal : (this.state.ordinal+1);
+    if(cardId){
+      var cardPile = event.dataTransfer.getData("cardPile");
+      var oldTablespaceId = event.dataTransfer.getData("oldTablespaceId");
+      var oldOrdinal = parseInt(event.dataTransfer.getData("oldOrdinal"));
+      var newOrdinal;
+      if(this.state.isDragHovered){
+        if(oldTablespaceId == this.state.tablespaceId){
+          newOrdinal = (this.state.isDragHoveredAbove) ? ((this.state.ordinal-1 > 0) ? (this.state.ordinal-1) : 0) : (this.state.ordinal);
+        } else {
+          newOrdinal = (this.state.isDragHoveredAbove) ? this.state.ordinal : (this.state.ordinal+1);
+        }
+        this.state.tableSocket.emit(
+          'moveCardPosition',
+          {
+            cardId: cardId,
+            cardPile: cardPile,
+            oldTablespaceId: oldTablespaceId,
+            newTablespaceId: this.state.tablespaceId,
+            oldOrdinal: oldOrdinal,
+            newOrdinal: newOrdinal
+          }
+        );
       }
-      this.state.tableSocket.emit(
-        'moveCardPosition',
-        {cardId: cardId, oldTablespaceId: oldTablespaceId, newTablespaceId: this.state.tablespaceId, oldOrdinal: oldOrdinal, newOrdinal: newOrdinal}
-      );
     }
   },
   distanceFromTop: function(){
-    return (this.state.ordinal * 10) + 'px';
+    // if this is a pile we need to maneuver the ordinal so that it doesn't make gaps
+    return ((this.state.ordinal * 10) - ((this.state.cardsInPile-1) * 10)) + 'px';
   },
   cardStyle: function(){
     return { backgroundColor: this.state.color, top: this.distanceFromTop() }
+  },
+  makePile: function(){
+    this.state.tableSocket.emit('pileTablespace', {tablespaceId: this.state.tablespaceId});
+  },
+  contextMenuItems: function(){
+    return [
+      <ContextMenuItem key="makePile" text="Make Pile" onClickFunction={this.makePile}/>,
+    ];
   },
   render: function(){
     var classes = classNames({
@@ -196,16 +260,137 @@ var Card = React.createClass({
       'card-drag-hovered-above': this.state.isDragHovered && this.state.isDragHoveredAbove,
       'card-drag-hovered-below': this.state.isDragHovered && !this.state.isDragHoveredAbove
     });
+    if(this.state.contextMenu){
+      var contextMenu = <ContextMenu contextMenuItems={this.contextMenuItems()}/>;
+    }
     return (
-      <div key={this.state.id} draggable="true" className={classes} style={this.cardStyle()} onDragOver={this.dragOver} onDragLeave={this.dragLeave} onDragStart={this.dragStart} onDrop={this.drop} onMouseEnter={this.mouseEnter} onMouseLeave={this.mouseLeave} />
-    )
+      <div
+        key={this.state.id}
+        draggable="true"
+        className={classes}
+        style={this.cardStyle()}
+        onDragOver={this.dragOver}
+        onDragLeave={this.dragLeave}
+        onDragStart={this.dragStart}
+        onDrop={this.drop}
+        onMouseEnter={this.mouseEnter}
+        onMouseLeave={this.mouseLeave}
+        onContextMenu={this.contextMenu}
+      >
+      {this.state.markupComponent}
+      {contextMenu}
+      </div>
+    );
+  }
+});
+
+// CardMarkup
+// this is a skeleton component for holding the raw html
+// used for templating cards by users
+// it's uh .. scary and awful.  but all in the name of ease for card game developers
+var CardMarkup = React.createClass({
+  getInitialState: function(){
+    return {
+      markup: this.props.markup
+    };
+  },
+  // live dangerously
+  markup: function(){
+    return { __html: this.state.markup };
+  },
+  render: function(){
+    return (
+      <div dangerouslySetInnerHTML={this.markup()} />
+    );
+  }
+});
+
+// ContextMenu shows when you right click on a card (or maybe other things too?)
+var ContextMenu = React.createClass({
+  getInitialState: function(){
+    return {
+      contextMenuItems: this.props.contextMenuItems
+    };
+  },
+  render: function(){
+    return (
+      <ul>
+        {this.state.contextMenuItems}
+      </ul>
+    );
+  }
+});
+
+var ContextMenuItem = React.createClass({
+  getInitialState: function(){
+    return {
+      text: this.props.text,
+      onClickFunction: this.props.onClickFunction
+    };
+  },
+  render: function(){
+    return (
+      <li><a href="#" onClick={this.state.onClickFunction}>{this.state.text}</a></li>
+    );
+  }
+});
+
+var Decklist = React.createClass({
+  getInitialState: function(){
+    var socket = io.connect();
+    socket.emit('initDecks');
+    return {
+      socket: socket,
+      decks: []
+    };
+  },
+  componentDidMount: function(){
+    this.state.socket.on('updateDecks', this.updateDecks);
+  },
+  updateDecks: function(data){
+    this.setState({decks: data.map(function(deck){ return <Deck key={deck} name={deck} /> } )});
+  },
+  render: function(){
+    return (
+      <div className="decklist">
+        <ul>
+          {this.state.decks}
+        </ul>
+      </div>
+    );
+  }
+});
+
+var Deck = React.createClass({
+  getInitialState: function(){
+    return {
+      name: this.props.name,
+      isDragging: false
+    };
+  },
+  dragStart: function(event){
+    this.setState({isDragging: true});
+    event.dataTransfer.setData("deckName", this.state.name);
+  },
+  dragEnd: function(event){
+    this.setState({isDragging: false});
+  },
+  render: function(){
+    return (
+      <li draggable="true" onDragStart={this.dragStart} className="deck">{this.state.name}</li>
+    );
   }
 });
 
 
 ReactDOM.render(
+  <Decklist />,
+  document.getElementById('decks')
+);
+
+ReactDOM.render(
  <Table id="1" />,
- document.getElementById('content')
+ document.getElementById('table')
 );
 
     </script>

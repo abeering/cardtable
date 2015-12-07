@@ -1,0 +1,8 @@
+{
+  "frontTemplate": "<p style='padding:0px; margin:0px; font-size:8px;'>{value} of {suit}</p>",
+  "backTemplate": "<p>card</p>",
+  "cards": [
+    { "value": "Ace", "suit": "Spades" },
+    { "value": "King", "suit": "Spades" }
+  ]
+}

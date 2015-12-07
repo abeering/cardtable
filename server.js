@@ -1,11 +1,11 @@
-//var pg = require('pg');
+// utility things
 var fs = require('fs');
 var path = require('path');
+
+// web setup
 var express = require('express');
 var app = express();
 var bodyParser = require('body-parser');
-
-// web setup
 app.use('/', express.static(path.join(__dirname, 'public')));
 app.use('/bower_components',  express.static(__dirname + '/bower_components'));
 app.use(bodyParser.json());
@@ -27,29 +27,113 @@ io.sockets.on('connection', function (socket) {
   var table_id;
 
   // init table connection
+  socket.on('initDecks', function(){
+    emitDecks(io);
+  });
+
+  socket.on('loadDeck', function(data){
+    loadDeckToTablespace(table_id, data);
+  });
+
+  // init table connection
   socket.on('initTable', function(table_id_param){
     table_id = table_id_param;
     emitTableState(table_id, io);
   });
 
-  // update table data
+  // move a card to a new position
   socket.on('moveCardPosition', function(data){
     moveCardPosition(table_id, io, data);
   });
 
+  // turn a tablespace into a pile
+  socket.on('pileTablespace', function(data){
+    pileTablespace(table_id, io, data);
+  });
+
 });
+
+function emitDecks(io){
+  var decks = [];
+  fs.readdirSync('decks').forEach(function(file){
+   var stat = fs.statSync('decks/'+file);
+   if(stat && stat.isDirectory()){
+     decks.push(file);
+   }
+  });
+  io.emit('updateDecks', decks);
+}
+
+function loadDeckToTablespace(table_id, data){
+  var deck_name = data['deckName'];
+  var tablespace_coord = data['tablespaceId'];
+  // load from deck json
+  var deck_config = JSON.parse(fs.readFileSync('decks/' + deck_name + '/deck.json', 'utf8'));
+
+  // render each card
+  var cards = deck_config.cards.map(function(card){
+    return { markup: CardTemplate(deck_config.frontTemplate, card) };
+  });
+
+  // shuffle, then apply ordinals
+  shuffle(cards);
+  cards = cards.map(function(card,i){
+    return { markup: card.markup, ordinal: i };
+  });
+
+  putCardPileOnTablespace(table_id, cards, tablespace_coord);
+}
+
+function putCardPileOnTablespace(table_id, cards, tablespace_coord){
+  var pile_string = new Date().getTime();
+  var insert_values = cards.map(function(card){ return '(' + [ parseInt(table_id), pgp.as.text(tablespace_coord), pgp.as.text(card.markup), card.ordinal, pgp.as.text(pile_string) ].join(',') + ')' });
+  var sql = `
+    INSERT INTO cards ( table_id, tablespace_coord, markup, ordinal, pile )
+    VALUES
+    ${insert_values.join(',')}
+  `;
+  db.query(sql).then(function(data){
+    emitTableState(table_id, io);
+  }).catch(function(error){
+    console.error('error running query', error);
+  });
+}
 
 function emitTableState(table_id, io){
 
-  db.query('SELECT cards.* FROM cards WHERE cards.table_id = $1::INT', table_id)
+  var sql = `
+  WITH pile_data AS (
+    SELECT pile, MAX(ordinal) AS pile_max_ordinal, COUNT(1) AS cards_in_pile
+    FROM cards
+    WHERE
+      table_id = $1::INT
+      AND pile IS NOT NULL
+    GROUP BY pile
+  )
+
+
+  SELECT cards.id, cards.tablespace_coord, cards.markup, cards.color, cards.ordinal, cards.pile, pile_data.cards_in_pile
+  FROM cards
+  JOIN pile_data ON pile_data.pile_max_ordinal = cards.ordinal AND pile_data.pile = cards.pile
+
+  UNION
+
+  SELECT cards.id, cards.tablespace_coord, cards.markup, cards.color, cards.ordinal, cards.pile, 1 AS cards_in_pile
+  FROM cards
+  WHERE
+    table_id = $1::INT
+    AND pile IS NULL
+  `;
+
+  db.query(sql, table_id)
     .then(function(data){
         table_data = {};
         data.map(function(card){
           if(table_data[card.tablespace_coord]){
-            table_data[card.tablespace_coord]['cards'].push({ id: card.id, color: card.color, ordinal: card.ordinal });
+            table_data[card.tablespace_coord]['cards'].push({ id: card.id, markup: card.markup, color: card.color, ordinal: card.ordinal, cards_in_pile: card.cards_in_pile, pile: card.pile });
           } else {
             table_data[card.tablespace_coord] = {};
-            table_data[card.tablespace_coord]['cards'] = [ { id: card.id, color: card.color, ordinal: card.ordinal } ];
+            table_data[card.tablespace_coord]['cards'] = [ { id: card.id, markup: card.markup, color: card.color, ordinal: card.ordinal, cards_in_pile: card.cards_in_pile, pile: card.pile } ];
           }
         });
 
@@ -61,12 +145,28 @@ function emitTableState(table_id, io){
 
 }
 
+function pileTablespace(table_id, io, data){
+  var pile_string = new Date().getTime();
+  sql = `
+    UPDATE cards SET pile = $1 WHERE tablespace_coord = $2
+  `;
+  db.query(
+    sql, [pile_string, data['tablespaceId']]
+  ).then(function(data){
+    emitTableState(table_id, io);
+  }).catch(function(error){
+    console.error('error running query', error);
+  });
+}
+
 function moveCardToNewOrdinalQuery(table_id, tablespace_coord, card_id, old_ordinal, new_ordinal){
   var sql;
   if(old_ordinal > new_ordinal){
     sql = `
       UPDATE cards
-        SET ordinal = CASE
+        SET
+        pile = NULL,
+        ordinal = CASE
           WHEN id = $2::INT THEN
             $4
           ELSE
@@ -80,7 +180,9 @@ function moveCardToNewOrdinalQuery(table_id, tablespace_coord, card_id, old_ordi
   } else {
     sql = `
       UPDATE cards
-        SET ordinal = CASE
+        SET
+        pile = NULL,
+        ordinal = CASE
           WHEN id = $2::INT THEN
             $4
           ELSE
@@ -100,7 +202,8 @@ function moveCardToNewTablespace(table_id, old_tablespace_coord, card_id, new_ta
   var sql = `
     UPDATE cards
       SET tablespace_coord = $4,
-      ordinal = $5::INT
+      ordinal = $5::INT,
+      pile = NULL
     WHERE
       id = $2::INT
       AND table_id = $1::INT
@@ -202,6 +305,35 @@ function moveCardPosition(table_id, io, request_data){
       });
 
     }
+}
+
+var CardTemplate = function(template, data) {
+    var regex = /\{([^\}]+)\}/, match;
+    while(match = template.match(regex)) {
+        template = template.replace(match[0], data[match[1]])
+    }
+    return template;
+}
+
+// found online
+// https://github.com/coolaj86/knuth-shuffle
+function shuffle(array) {
+  var currentIndex = array.length, temporaryValue, randomIndex ;
+
+  // While there remain elements to shuffle...
+  while (0 !== currentIndex) {
+
+    // Pick a remaining element...
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex -= 1;
+
+    // And swap it with the current element.
+    temporaryValue = array[currentIndex];
+    array[currentIndex] = array[randomIndex];
+    array[randomIndex] = temporaryValue;
+  }
+
+  return array;
 }
 
 app.listen(app.get('port'), function() {
