@@ -1,0 +1,21 @@
+{
+  "name": "tabletop",
+  "description": "",
+  "main": "server.js",
+  "authors": [
+    "abeering"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/abeering/cardtable",
+  "moduleType": [],
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "classnames": "~2.2.0"
+  }
+}
