@@ -28,7 +28,7 @@ body {
 .card {
   position: absolute;
   width: 60px;
-  height: 50px;
+  height: 80px;
   left: 4px;
   z-index: auto;
   overflow: visible;

@@ -69,6 +69,8 @@ function loadDeckToTablespace(table_id, data){
   var tablespace_coord = data['tablespaceId'];
   // load from deck json
   var deck_config = JSON.parse(fs.readFileSync('decks/' + deck_name + '/deck.json', 'utf8'));
+  // allow deck_images to be used for this deck
+  app.use('/deck_images', express.static(__dirname + '/decks/' + deck_name + '/deck_images'));
 
   // render each card
   var cards = deck_config.cards.map(function(card){
@@ -110,7 +112,6 @@ function emitTableState(table_id, io){
       AND pile IS NOT NULL
     GROUP BY pile
   )
-
 
   SELECT cards.id, cards.tablespace_coord, cards.markup, cards.color, cards.ordinal, cards.pile, pile_data.cards_in_pile
   FROM cards
