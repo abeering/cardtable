@@ -17,7 +17,7 @@ body {
   border: 1px dashed;
   position: relative;
   z-index: auto;
-  margin: 2px 5px;
+  margin: 1px 1px;
   text-align: center;
 }
 
@@ -27,13 +27,12 @@ body {
 
 .card {
   position: absolute;
-  width: 60px;
+  width: 65px;
   height: 80px;
-  left: 4px;
+  left: 2px;
   z-index: auto;
   overflow: visible;
   background-color: #fff;
-  border: 1px solid;
 }
 
 .card-drag-hovered-above {
@@ -66,8 +65,8 @@ body {
   padding: 0px;
   position: absolute;
   margin: 0px -100px 0px 0px;
-  top: 100%;
-  left: 0;
+  left: 100%;
+  top: 0;
   right: 0;
   border: 1px solid;
   background-color: #ccc;

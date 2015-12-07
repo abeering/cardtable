@@ -1,6 +1,7 @@
 {
+  "name": "Standard 52 Card Deck",
   "frontTemplate": "<img style='width:100%; height:100%' src='deck_images/{image_name}' />",
-  "backTemplate": "<img style='width:100%; height: 100%' src='deck_images/155.png'",
+  "backTemplate": "<img style='width:100%; height: 100%' src='deck_images/155.png' />",
   "cards": [
     { "image_name": "101.png" },
     { "image_name": "102.png" },
